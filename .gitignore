@@ -145,3 +145,6 @@ t_VAE_log/
 
 # Jupyter checkpoints
 .ipynb_checkpoints/
+
+# PyTorch checkpoints
+*.ckpt
