@@ -214,10 +214,10 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
         mu = args[2]
         log_var = args[3]
 
-        kld_weight = 0*kwargs['M_N']  # Account for the minibatch samples from the dataset
+        kld_weight = kwargs['M_N']  # Account for the minibatch samples from the dataset
         recons_loss = F.mse_loss(recons, input)
 
-        kld_loss = 0*torch.mean(torch.mean(0.5 * torch.sum(mu ** 2 + log_var.exp()-1 - log_var, dim=1), dim=0))
+        kld_loss = torch.mean(torch.mean(0.5 * torch.sum(mu ** 2 + log_var.exp()-1 - log_var, dim=1), dim=0))
 
         loss = recons_loss + kld_weight * kld_loss
         return {'loss': loss, 'Reconstruction_Loss': recons_loss, 'KLD': kld_loss}
