@@ -28,7 +28,7 @@ class normalize(nn.Module):
             shape = input.shape
             output = torch.zeros(shape, requires_grad=True)
             m = torch.mean(input[:, :, 0], axis=0)
-            s = torch.mean(input[:, :, 0], axis=0)
+            s = torch.std(input[:, :, 0], axis=0)
             for i in range(shape[1]):
                 output[:, i, :] = (input[:, i, :] - m[i])/s[i]
             return output
