@@ -42,6 +42,7 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
                  X: Array,  # shape (T x B x N) (batch size, sequence length, dimensionality)
                  lag: int,  # Autoregressive lag
                  latent_dim: int,  # size of the latent dimension
+                 if_normalize: bool = True, # if normalize input
                  normalize_idx: int = 0,  # normalize_index
                  lr: float = 0.005,  # learning rate
                  weight_decay: float = 0,  # weight decay
@@ -61,13 +62,16 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
         self.hold_graph = False
 
         self.hparams = {'lr': self.lr}
+        
 
         modules = []
         if hidden_dims is None:
             hidden_dims = [32, 16]
         # Normalize
-        net = nn.Sequential(normalize(normalize_idx))
-        modules.append(net)
+        self.if_normalize = if_normalize
+        if if_normalize is True:
+            net = nn.Sequential(normalize(normalize_idx))
+            modules.append(net)
 
         # Build
         in_channels = self.in_channels
