@@ -17,11 +17,16 @@ def train(data, hyper_params, input_checkpoint_path=None, output_checkpoint_path
     lag = hyper_params['lag']
     latent_dim = hyper_params['latent_dim']
     hidden_dims = hyper_params['hidden_dims']
+    if 'if_normalize' in hyper_params:
+        if_normalize = hyper_params['if_normalize']
+    else:
+        if_normalize = True #Default is True
 
     vae_model = t_VAE.AR_VAE(lag=lag,
                              latent_dim=latent_dim,
                              X=torch.tensor(data).float(),
                              hidden_dims=hidden_dims,
+                             if_normalize=if_normalize,
                              ).float()
     if input_checkpoint_path is not None:
         vae_model = t_VAE.AR_VAE.load_from_checkpoint(input_checkpoint_path,
@@ -29,6 +34,7 @@ def train(data, hyper_params, input_checkpoint_path=None, output_checkpoint_path
                                                       latent_dim=latent_dim,
                                                       X=torch.tensor(data).float(),
                                                       hidden_dims=hidden_dims,
+                                                      if_normalize=if_normalize,
                                                       ).float()
 
     print('Loss Before Training')
@@ -43,13 +49,21 @@ def train(data, hyper_params, input_checkpoint_path=None, output_checkpoint_path
         create_git_tag=False)
 
     # Trainer
+#     runner = Trainer(max_epochs=max_epochs,
+#                      logger=tt_logger,
+#                      log_save_interval=50,
+#                      train_percent_check=1.,
+#                      val_percent_check=1.,
+#                      num_sanity_val_steps=100,
+#                      early_stop_callback=False)
     runner = Trainer(max_epochs=max_epochs,
                      logger=tt_logger,
-                     log_save_interval=50,
-                     train_percent_check=1.,
-                     val_percent_check=1.,
+                     log_every_n_steps=50,
+                     limit_train_batches=1.,
+                     limit_val_batches=1.,
                      num_sanity_val_steps=100,
-                     early_stop_callback=False)
+                     checkpoint_callback=False
+                     )
 
     runner.fit(vae_model)
 
