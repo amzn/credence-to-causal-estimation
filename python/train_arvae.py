@@ -143,7 +143,8 @@ def generate_example_sample(data, vae_model, post_intervention_vae_model=None, T
     trend = vae_model.make_trend(T, B, 0.005)
     seasonality_y = vae_model.make_seasonality(T, B, 365)
     seasonality_m = vae_model.make_seasonality(T, B, 30)
-    w1 = torch.cat((peaks, trend, seasonality_y, seasonality_m), axis=2)
+    seasonality_w = vae_model.make_seasonality(T, B, 7)
+    w1 = torch.cat((peaks, trend, seasonality_y, seasonality_m, seasonality_w), axis=2)
 
     # LOOPING OVER EACH STEP
     for t in range(T):
