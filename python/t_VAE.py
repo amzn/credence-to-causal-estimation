@@ -102,7 +102,7 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
         self.decoder = nn.Sequential(*modules)
 
         # can we take the final layer as input from user?
-        self.final_layer = nn.Sequential(nn.Linear(in_features=4+hidden_dims[-1]+X.shape[2]*(lag),
+        self.final_layer = nn.Sequential(nn.Linear(in_features=5+hidden_dims[-1]+X.shape[2]*(lag),
                                                    out_features=self.in_channels//(lag+1)))
 
     def encode(self, X: Tensor) -> List[Tensor]:
@@ -181,7 +181,8 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
         trend = self.make_trend(T, B, 0.005)
         seasonality_y = self.make_seasonality(T, B, 365)
         seasonality_m = self.make_seasonality(T, B, 30)
-        w1 = torch.cat((peaks, trend, seasonality_y, seasonality_m), axis=2)
+        seasonality_w = self.make_seasonality(T, B, 7)
+        w1 = torch.cat((peaks, trend, seasonality_y, seasonality_m, seasonality_w), axis=2)
 
         for t in range(T):
             z = Z[t]
@@ -223,7 +224,7 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
 
         kld_loss = torch.mean(torch.mean(0.5 * torch.sum(mu ** 2 + log_var.exp()-1 - log_var, dim=1), dim=0))
 
-        loss = recons_loss + kld_weight * kld_loss
+        loss = recons_loss + kld_weight * kld_loss * 0.01
         return {'loss': loss, 'Reconstruction_Loss': recons_loss, 'KLD': kld_loss}
 
     def sample(self,
@@ -266,7 +267,7 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
     def train_dataloader(self):
         T = len(self.X)
         return DataLoader(self.X, batch_size=T, shuffle=False, drop_last=False)
-
+    
     def validation_step(self, batch, optimizer_idx=0):
         X = batch
         self.curr_device = X.device
@@ -276,10 +277,20 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
 
     def validation_epoch_end(self, outputs):
         avg_loss = torch.stack([x['loss'] for x in outputs]).mean()
-        tensorboard_logs = {'avg_val_loss': avg_loss}
+        kld_loss = torch.stack([x['KLD'] for x in outputs]).mean()
+        recons_loss = torch.stack([x['Reconstruction_Loss'] for x in outputs]).mean()
+        tensorboard_logs = {'avg_val_loss': avg_loss, 'kld_loss': kld_loss, 'Reconstruction_Loss': recons_loss}
+        print(tensorboard_logs)
         # self.sample_images()
-        return {'val_loss': avg_loss, 'log': tensorboard_logs}
+        return {'val_loss': avg_loss, 'kld_loss': kld_loss, 'Reconstruction_Loss': recons_loss, 'log': tensorboard_logs}
 
+    # def validation_epoch_end(self, outputs):
+    #     avg_loss = torch.stack([x['loss'] for x in outputs]).mean()
+    #     tensorboard_logs = {'avg_val_loss': avg_loss}
+    #     # self.sample_images()
+    #     return {'val_loss': avg_loss, 'log': tensorboard_logs}
+    
+    
     def val_dataloader(self):
         T = len(self.X)
         self.sample_dataloader = DataLoader(self.X, batch_size=T, shuffle=False, drop_last=False)
@@ -297,7 +308,8 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
         trend = self.make_trend(T, B, 0.005)
         seasonality_y = self.make_seasonality(T, B, 365)
         seasonality_m = self.make_seasonality(T, B, 30)
-        w1 = torch.cat((peaks, trend, seasonality_y, seasonality_m), axis=2)
+        seasonality_w = self.make_seasonality(T, B, 7)
+        w1 = torch.cat((peaks, trend, seasonality_y, seasonality_m, seasonality_w), axis=2)
         loglike = []
         for t in range(self.lag, T):
             Xhat = []
@@ -322,5 +334,6 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
         B = X.shape[1]
         loglike = []
         for i in range(B):
+            print(i)
             loglike.append(self.marginal(X[:, i, :], sample=samples))
         return loglike
