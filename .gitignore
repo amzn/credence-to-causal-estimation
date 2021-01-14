@@ -148,3 +148,6 @@ t_VAE_log/
 
 # PyTorch checkpoints
 *.ckpt
+
+# data
+/data
