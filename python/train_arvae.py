@@ -3,10 +3,11 @@ import matplotlib.pyplot as plt
 import os
 import seaborn as sns
 
-import t_VAE
+from credence_to_causal_estimation_main_3.python import t_VAE
 import torch
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TestTubeLogger
+
 
 sns.set()
 
@@ -17,6 +18,8 @@ def train(data, hyper_params, input_checkpoint_path=None, output_checkpoint_path
     lag = hyper_params['lag']
     latent_dim = hyper_params['latent_dim']
     hidden_dims = hyper_params['hidden_dims']
+    
+    
 
     vae_model = t_VAE.AR_VAE(lag=lag,
                              latent_dim=latent_dim,
@@ -45,11 +48,12 @@ def train(data, hyper_params, input_checkpoint_path=None, output_checkpoint_path
     # Trainer
     runner = Trainer(max_epochs=max_epochs,
                      logger=tt_logger,
-                     log_save_interval=50,
-                     train_percent_check=1.,
-                     val_percent_check=1.,
+                     log_every_n_steps=50,
+                     limit_train_batches=1.,
+                     limit_val_batches=1.,
                      num_sanity_val_steps=100,
-                     early_stop_callback=False)
+                     checkpoint_callback=False
+                     )
 
     runner.fit(vae_model)
 
@@ -112,12 +116,13 @@ def intervene_raw(target_idx, feature_idx, bias, intervention, checkpoint_path, 
 def generate_example_sample(data, vae_model, post_intervention_vae_model=None, T0=None, eps=None):
     # DATA -> PI -> Z -> W -> S(prime) ###
     pi = vae_model.encode(torch.tensor(data).float())  # calculate vector in sampling space; pi = (mean, log variance)
+    #print(pi[0][0])
     if eps is None:
         mu, logvar = pi
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
     Z = vae_model.reparameterize(pi, eps)  # drawing sample from the sampling space
-
+    #print(Z.shape)
     S_init = torch.tensor(data[0:vae_model.lag, :, :]).float()  # initializing lag terms
 
     T = Z.shape[0]  # length of timeseries
@@ -136,11 +141,13 @@ def generate_example_sample(data, vae_model, post_intervention_vae_model=None, T
         # z = torch.cat([Z[t]] + [S[-i] for i in range(vae_model.lag)], dim=1)
         z = Z[t]
         result = vae_model.decoder_input(z)  # calculating input to decoder
+        #print(result.shape)
         w = vae_model.decoder(result)  # calculating latent vector
+        #print(w.shape)
         # concat latent vector with addition trends (seasonality+peaks+linear)
         w_appended = torch.cat((w, w1[t, :, :]), axis=1)
-        w_lag = torch.cat([w_appended] + [S[-i] for i in range(vae_model.lag)], dim=1)
-
+        w_lag = torch.cat([w] + [S[-i] for i in range(vae_model.lag)], dim=1)
+        #print(w_lag.shape)
         # POST INTERVENTION PART
         if((post_intervention_vae_model is not None) and (T0 is not None)):
             if t >= (T0-vae_model.lag):
@@ -159,7 +166,7 @@ def generate_example_sample(data, vae_model, post_intervention_vae_model=None, T
             W = w.reshape([1, w.shape[0], w.shape[1]])
         else:
             W = torch.cat([W, w.reshape([1, w.shape[0], w.shape[1]])])
-
+    #print(W.shape)
     if((post_intervention_vae_model is not None) and (T0 is not None)):
         return S, Sprime, T0, pi, Z, W
     return S, pi, Z, W
@@ -180,12 +187,12 @@ def plot(data, vae_model, post_intervention_vae_model=None, T0=None, out_folder=
     for i in range(data.shape[1]):
         fig, ax = plt.subplots(nrows=3, ncols=2, figsize=(35, 20))
 
-        ax[0, 0].plot(np.arange(0, T+vae_model.lag), (S).detach().numpy()[:, i, :], alpha=0.5)
+        ax[0, 0].plot(np.arange(vae_model.lag + 5, T+vae_model.lag), (S).detach().numpy()[vae_model.lag + 5:, i, :], alpha=0.5)
         ax[0, 0].set_ylabel('Normalized (Outcome)')
         ax[0, 0].set_xlabel('Time Steps')
         ax[0, 0].title.set_text('Simulated X')
 
-        ax[0, 1].plot(np.arange(0, T+vae_model.lag), data[:, i, :])
+        ax[0, 1].plot(np.arange(vae_model.lag + 5, T+vae_model.lag), data[vae_model.lag + 5:, i, :])
         ax[0, 1].set_ylabel('Normalized (Outcome)')
         ax[0, 1].set_xlabel('Time Steps')
         ax[0, 1].title.set_text('Observed X')
