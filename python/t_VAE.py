@@ -8,14 +8,14 @@ from pytorch_lightning.core.lightning import LightningModule
 
 from typing import List, TypeVar
 
-Tensor = TypeVar('torch.tensor')
-Array = TypeVar('numpy.ndarray')
+Tensor = TypeVar("torch.tensor")
+Array = TypeVar("numpy.ndarray")
 
 
 def init_weights(m):
     if type(m) == nn.Linear:
-        torch.nn.init.normal_(m.weight, mean=0, std=0.25)
-        m.bias.data.fill_(0.01)
+        torch.nn.init.normal_(m.weight, mean=0, std=0.0000001)
+        m.bias.data.fill_(0.0)
 
 
 class normalize(nn.Module):
@@ -30,28 +30,29 @@ class normalize(nn.Module):
             m = torch.mean(input[:, :, 0], axis=0)
             s = torch.mean(input[:, :, 0], axis=0)
             for i in range(shape[1]):
-                output[:, i, :] = (input[:, i, :] - m[i])/s[i]
+                output[:, i, :] = (input[:, i, :] - m[i]) / s[i]
             return output
         except:
             return input
 
 
 class AR_VAE(baseVAE.BaseVAE, LightningModule):
-
-    def __init__(self,
-                 X: Array,  # shape (T x B x N) (batch size, sequence length, dimensionality)
-                 lag: int,  # Autoregressive lag
-                 latent_dim: int,  # size of the latent dimension
-                 normalize_idx: int = 0,  # normalize_index
-                 lr: float = 0.005,  # learning rate
-                 weight_decay: float = 0,  # weight decay
-                 hidden_dims: List = None,  # list of hidden dimensions for encoder
-                 **kwargs) -> None:
+    def __init__(
+        self,
+        X: Array,  # shape (T x B x N) (batch size, sequence length, dimensionality)
+        lag: int,  # Autoregressive lag
+        latent_dim: int,  # size of the latent dimension
+        normalize_idx: int = 0,  # normalize_index
+        lr: float = 0.005,  # learning rate
+        weight_decay: float = 0,  # weight decay
+        hidden_dims: List = None,  # list of hidden dimensions for encoder
+        **kwargs
+    ) -> None:
         super(AR_VAE, self).__init__()
 
         self.X = X
         self.lag = lag
-        self.in_channels = X.shape[2]*(lag+1)
+        self.in_channels = X.shape[2] * (lag + 1)
         self.latent_dim = latent_dim
 
         self.lr = lr
@@ -60,7 +61,7 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
         self.curr_device = None
         self.hold_graph = False
 
-        self.hparams = {'lr': self.lr}
+        self.hparams = {"lr": self.lr}
 
         modules = []
         if hidden_dims is None:
@@ -72,7 +73,9 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
         # Build
         in_channels = self.in_channels
         for h_dim in hidden_dims:
-            net = nn.Sequential(nn.Linear(in_features=in_channels, out_features=h_dim), nn.ReLU())
+            net = nn.Sequential(
+                nn.Linear(in_features=in_channels, out_features=h_dim), nn.ReLU()
+            )
             net.apply(init_weights)
             modules.append(net)
             in_channels = h_dim
@@ -90,16 +93,18 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
 
         for i in range(len(hidden_dims) - 1):
             modules.append(
-                nn.Sequential(
-                    nn.Linear(hidden_dims[i], hidden_dims[i + 1]),
-                    nn.ReLU())
+                nn.Sequential(nn.Linear(hidden_dims[i], hidden_dims[i + 1]), nn.ReLU())
             )
 
         self.decoder = nn.Sequential(*modules)
 
         # can we take the final layer as input from user?
-        self.final_layer = nn.Sequential(nn.Linear(in_features=4+hidden_dims[-1]+X.shape[2]*(lag),
-                                                   out_features=self.in_channels//(lag+1)))
+        self.final_layer = nn.Sequential(
+            nn.Linear(
+                in_features=4 + hidden_dims[-1] + X.shape[2] * (lag),
+                out_features=self.in_channels // (lag + 1),
+            )
+        )
 
     def encode(self, X: Tensor) -> List[Tensor]:
         """
@@ -113,7 +118,7 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
         mu = []
         log_var = []
         for t in range(self.lag, T):
-            input = torch.cat([X[t-i] for i in range(0, self.lag+1)], dim=1)
+            input = torch.cat([X[t - i] for i in range(0, self.lag + 1)], dim=1)
             result = self.encoder(input)
             # Split the result into mu and var components
             # of the latent Gaussian distribution
@@ -137,30 +142,25 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
         std = torch.exp(0.5 * logvar)
         return eps * std + mu
 
-    def make_peak(self, T: int, B: int,
-                  T0: int = 190,
-                  dT: int = 365) -> Tensor:
+    def make_peak(self, T: int, B: int, T0: int = 190, dT: int = 365) -> Tensor:
         peaks = torch.zeros((T, B, 1), requires_grad=False)
-        while(T0 < T):
+        while T0 < T:
             peaks[T0, :, :] = 10
-            T0 = T0+dT
+            T0 = T0 + dT
         return peaks
 
-    def make_trend(self, T: int, B: int,
-                   slope: float = 0.005,
-                   ) -> Tensor:
-        a = torch.linspace(0, slope*T, T)
+    def make_trend(self, T: int, B: int, slope: float = 0.005,) -> Tensor:
+        a = torch.linspace(0, slope * T, T)
         b = torch.zeros(B, 1)
-        return (b+a).T.reshape(T, B, 1)
+        return (b + a).T.reshape(T, B, 1)
 
     def make_seasonality(self, T: int, B: int, period: int = 365,) -> Tensor:
         a = torch.linspace(0, T, T)
-        season = torch.sin(a*torch.acos(torch.zeros(1)).item() * 4/period)
+        season = torch.sin(a * torch.acos(torch.zeros(1)).item() * 4 / period)
         b = torch.zeros(B, 1)
-        return (b+season).T.reshape(T, B, 1)
+        return (b + season).T.reshape(T, B, 1)
 
-    def decode(self, Z: Tensor,
-               S_init: Tensor) -> Tensor:
+    def decode(self, Z: Tensor, S_init: Tensor) -> Tensor:
         """
         Maps the given latent codes
         onto the image space.
@@ -198,11 +198,9 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
         eps = torch.randn_like(std)
         Z = self.reparameterize(pi, eps)
         mu, log_var = pi
-        return [self.decode(Z, S_init=X[0:self.lag]), X, mu, log_var]
+        return [self.decode(Z, S_init=X[0 : self.lag]), X, mu, log_var]
 
-    def loss_function(self,
-                      *args,
-                      **kwargs) -> dict:
+    def loss_function(self, *args, **kwargs) -> dict:
         """
         Computes the tVAE loss function.
         :param args:
@@ -214,18 +212,21 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
         mu = args[2]
         log_var = args[3]
 
-        kld_weight = 0*kwargs['M_N']  # Account for the minibatch samples from the dataset
+        kld_weight = (
+            0 * kwargs["M_N"]
+        )  # Account for the minibatch samples from the dataset
         recons_loss = F.mse_loss(recons, input)
 
-        kld_loss = 0*torch.mean(torch.mean(0.5 * torch.sum(mu ** 2 + log_var.exp()-1 - log_var, dim=1), dim=0))
+        kld_loss = 0 * torch.mean(
+            torch.mean(
+                0.5 * torch.sum(mu ** 2 + log_var.exp() - 1 - log_var, dim=1), dim=0
+            )
+        )
 
         loss = recons_loss + kld_weight * kld_loss
-        return {'loss': loss, 'Reconstruction_Loss': recons_loss, 'KLD': kld_loss}
+        return {"loss": loss, "Reconstruction_Loss": recons_loss, "KLD": kld_loss}
 
-    def sample(self,
-               T: int,
-               num_samples: int,
-               ) -> Tensor:
+    def sample(self, T: int, num_samples: int,) -> Tensor:
         """
         Samples from the latent space and return the corresponding
         image space map.
@@ -234,7 +235,7 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
         :return: (Tensor)
         """
         S_init = torch.randn(self.lag, num_samples, self.X.shape[2])
-        z = torch.randn(T-1, num_samples, self.latent_dim)
+        z = torch.randn(T - 1, num_samples, self.latent_dim)
         samples = self.decode(z, S_init)
         return samples
 
@@ -248,7 +249,9 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
 
     def configure_optimizers(self):
         self.optims = []
-        optimizer = optim.Adam(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+        optimizer = optim.Adam(
+            self.parameters(), lr=self.lr, weight_decay=self.weight_decay
+        )
         self.optims.append(optimizer)
         return self.optims
 
@@ -271,14 +274,16 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
         return val_loss
 
     def validation_epoch_end(self, outputs):
-        avg_loss = torch.stack([x['loss'] for x in outputs]).mean()
-        tensorboard_logs = {'avg_val_loss': avg_loss}
+        avg_loss = torch.stack([x["loss"] for x in outputs]).mean()
+        tensorboard_logs = {"avg_val_loss": avg_loss}
         # self.sample_images()
-        return {'val_loss': avg_loss, 'log': tensorboard_logs}
+        return {"val_loss": avg_loss, "log": tensorboard_logs}
 
     def val_dataloader(self):
         T = len(self.X)
-        self.sample_dataloader = DataLoader(self.X, batch_size=T, shuffle=False, drop_last=False)
+        self.sample_dataloader = DataLoader(
+            self.X, batch_size=T, shuffle=False, drop_last=False
+        )
         self.num_val_imgs = len(self.sample_dataloader)
         return self.sample_dataloader
 
@@ -304,13 +309,17 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
                 # concatenating w with addition trends (seasonality+peaks+linear)
                 w = torch.cat((w, w1[t, :, :]), axis=1)
                 # concatenating lag terms
-                w = torch.cat([w] + [X[i, :, :] for i in range(t-self.lag, t)], dim=1)
+                w = torch.cat([w] + [X[i, :, :] for i in range(t - self.lag, t)], dim=1)
                 s = self.final_layer(w)
                 Xhat.append(s)
             Xhat = torch.stack(Xhat)[:, 0, :]
             mu_Xhat = Xhat.mean(axis=0)
-            cov_inv_Xhat = torch.tensor(np.linalg.inv(np.cov(Xhat.T.detach().numpy()))).float()
-            loglike_t = -0.5*torch.matmul((D[t, :] - mu_Xhat).T, torch.matmul(cov_inv_Xhat, (D[t, :] - mu_Xhat)))
+            cov_inv_Xhat = torch.tensor(
+                np.linalg.inv(np.cov(Xhat.T.detach().numpy()))
+            ).float()
+            loglike_t = -0.5 * torch.matmul(
+                (D[t, :] - mu_Xhat).T, torch.matmul(cov_inv_Xhat, (D[t, :] - mu_Xhat))
+            )
             loglike.append(loglike_t)
         return torch.sum(torch.tensor(loglike).float())
 
