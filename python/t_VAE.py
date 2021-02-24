@@ -163,9 +163,6 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
         :param Z: (Tensor) [T-1 x B x L]
         :return S: (Tensor) [T x B x P]
         """
-        T = Z.shape[0]
-        B = Z.shape[1]
-
         result = self.decoder_input(Z)
         W = self.decoder(result)
         S = self.final_layer(W)
