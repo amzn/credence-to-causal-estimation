@@ -42,6 +42,7 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
         X: Array,  # shape (T x B x N) (batch size, sequence length, dimensionality)
         lag: int,  # Autoregressive lag
         latent_dim: int,  # size of the latent dimension
+        kld_weight: float = 1, # weight for KL loss in loss
         normalize_idx: int = 0,  # normalize_index
         lr: float = 0.005,  # learning rate
         weight_decay: float = 0,  # weight decay
@@ -56,6 +57,7 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
         self.latent_dim = latent_dim
 
         self.lr = lr
+        self.kld_weight = kld_weight
         self.weight_decay = weight_decay
 
         self.curr_device = None
@@ -188,8 +190,10 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
         input = args[1]
         mu = args[2]
         log_var = args[3]
+        
+        kld_weight = kwargs["M_N"]  # Account for the minibatch samples from the dataset, currently, M_N is always set to 1
+        kld_weight = kld_weight * self.kld_weight
 
-        kld_weight = kwargs["M_N"]  # Account for the minibatch samples from the dataset
         recons = torch.squeeze(recons)
         recons_loss = F.mse_loss(recons, input)
 
@@ -199,7 +203,7 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
             )
         )
         loss = recons_loss + kld_weight * kld_loss
-        return {"loss": loss, "Reconstruction_Loss": recons_loss, "KLD": kld_loss}
+        return {"loss": loss, "Reconstruction_Loss": recons_loss, "KLD_Loss": kld_loss, 'KLD_weight': kld_weight} 
 
     def sample(self, T: int, num_samples: int,) -> Tensor:
         """
@@ -250,7 +254,7 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
 
     def validation_epoch_end(self, outputs):
         avg_loss = torch.stack([x["loss"] for x in outputs]).mean()
-        kld_loss = torch.stack([x["KLD"] for x in outputs]).mean()
+        kld_loss = torch.stack([x["KLD_Loss"] for x in outputs]).mean()
         recons_loss = torch.stack([x["Reconstruction_Loss"] for x in outputs]).mean()
         tensorboard_logs = {
             "avg_val_loss": avg_loss,
