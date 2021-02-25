@@ -8,6 +8,8 @@ import torch
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TestTubeLogger
 
+from typing import Optional
+
 sns.set()
 
 
@@ -264,4 +266,85 @@ def plot(data, vae_model, post_intervention_vae_model=None, T0=None, out_folder=
 
         if out_folder is not None:
             fig.savefig(out_folder + "example_sample_%d.png" % (i))
+
+
+# Exclude Bundles with small targets
+data = np.delete(data, np.argwhere(median_targets[:, :2] < 200)[:, 0], 1)
+mean_targets = np.delete(
+    mean_targets, np.argwhere(median_targets[:, :2] < 200)[:, 0], 0
+)
+
+
+class DataProcesser:
+    """
+    """
+
+    def __init__(self, data: np.ndarray, targets: int, adjust: Optional[float] = 10):
+        B = data.shape[1]  # total number of bundles
+        T = data.shape[0]  # length timeseries
+        N = data.shape[2]  # total number of donors + targets
+
+        self.B = B
+        self.T = T
+        self.N = N
+        self.targets = targets
+        self.adjust = adjust
+
+        def prepare_input(self, data: np.ndarray):
+            data_norm0 = self.normalized_data(data=data)
+
+            # remove outlier
+            data_norm0[data_norm0 > 5] = 5
+            data_norm0[data_norm0 < -5] = -5
+
+            # convert 3D to 2D
+            data_norm, std_t, std_d = convert_to_2d(self, data_norm0)
+
+            # append mean and std
+            mean_targets = np.mean(data[:, :, :], axis=0)
+
+            processed_data_norm = np.append(
+                np.append(
+                    np.append(data_norm, np.log(std_t[:, None]) / adjust, axis=1),
+                    np.log(std_d[:, None]) / adjust,
+                    axis=1,
+                ),
+                np.log(mean_targets) / adjust,
+                axis=1,
+            )
+            return processed_data_norm
+
+        def normalized_data(self, data: np.ndarray):
+            N = self.N
+            targets = self.targets
+
+            # Separetly compute standard deviation for largest target and largest donor
+            std_t = np.std(data[:, :, targets - 1], axis=0)
+            std_d = np.std(data[:, :, N - 1], axis=0)
+
+            data_norm0t = (
+                data[:, :, :targets] - np.mean(data[:, :, :targets], axis=0)
+            ) / std_t[None, :, None]
+            data_norm0d = (
+                data[:, :, targets:] - np.mean(data[:, :, targets:], axis=0)
+            ) / std_d[None, :, None]
+            data_norm0 = np.append(data_norm0t, data_norm0d, axis=2)
+
+            print(f"Shape: {data_norm0.shape}")
+            print(f"\nMean of raw data: {np.mean(data):.3f}")
+            print(f"Std. dev of raw data: {np.std(data):.3f}")
+            print(f"\nMean of normalized data: {np.mean(data_norm0):.3f}")
+            print(f"Std. dev of normalized data: {np.std(data_norm0):.3f}")
+            return data_norm0, std_t, std_d
+
+        def convert_to_2d(self, data_input):
+            B = self.B
+            N = self.N
+            T = self.T
+
+            data_rescale = np.zeros((B, N * T))
+            for i in range(0, B):
+                for j in range(0, N):
+                    data_rescale[i, T * j : T * (j + 1)] = data_input[:, i, j]
+            return data_rescale
 
