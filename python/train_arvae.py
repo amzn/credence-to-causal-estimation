@@ -16,13 +16,11 @@ def train(
 ):
     # TRAINING FUNCTION
     max_epochs = hyper_params["epochs"]
-    lag = hyper_params["lag"]
     latent_dim = hyper_params["latent_dim"]
     hidden_dims = hyper_params["hidden_dims"]
     kld_weight = hyper_params["kld_weight"]
 
     vae_model = t_VAE.AR_VAE(
-        lag=lag,
         latent_dim=latent_dim,
         X=torch.tensor(data).float(),
         hidden_dims=hidden_dims,
@@ -31,7 +29,6 @@ def train(
     if input_checkpoint_path is not None:
         vae_model = t_VAE.AR_VAE.load_from_checkpoint(
             input_checkpoint_path,
-            lag=lag,
             latent_dim=latent_dim,
             X=torch.tensor(data).float(),
             hidden_dims=hidden_dims,
