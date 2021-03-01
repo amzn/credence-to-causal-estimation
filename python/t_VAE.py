@@ -40,9 +40,8 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
     def __init__(
         self,
         X: Array,  # shape (T x B x N) (batch size, sequence length, dimensionality)
-        lag: int,  # Autoregressive lag
         latent_dim: int,  # size of the latent dimension
-        kld_weight: float = 1, # weight for KL loss in loss
+        kld_weight: float = 1,  # weight for KL loss in loss
         normalize_idx: int = 0,  # normalize_index
         lr: float = 0.005,  # learning rate
         weight_decay: float = 0,  # weight decay
@@ -52,7 +51,6 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
         super(AR_VAE, self).__init__()
 
         self.X = X
-        self.lag = lag
         self.in_channels = X.shape[1]
         self.latent_dim = latent_dim
 
@@ -190,8 +188,10 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
         input = args[1]
         mu = args[2]
         log_var = args[3]
-        
-        kld_weight = kwargs["M_N"]  # Account for the minibatch samples from the dataset, currently, M_N is always set to 1
+
+        kld_weight = kwargs[
+            "M_N"
+        ]  # Account for the minibatch samples from the dataset, currently, M_N is always set to 1
         kld_weight = kld_weight * self.kld_weight
 
         recons = torch.squeeze(recons)
@@ -203,19 +203,24 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
             )
         )
         loss = recons_loss + kld_weight * kld_loss
-        return {"loss": loss, "Reconstruction_Loss": recons_loss, "KLD_Loss": kld_loss, 'KLD_weight': kld_weight} 
+        return {
+            "loss": loss,
+            "Reconstruction_Loss": recons_loss,
+            "KLD_Loss": kld_loss,
+            "KLD_weight": kld_weight,
+        }
 
-    def sample(self, T: int, num_samples: int,) -> Tensor:
+    def sample(self, num_samples: int,) -> Tensor:
         """
         Samples from the latent space and return the corresponding
         image space map.
         :param num_samples: (Int) Number of samples
-        :param current_device: (Int) Device to run the model
         :return: (Tensor)
         """
-        S_init = torch.randn(self.lag, num_samples, self.X.shape[2])
-        z = torch.randn(T - 1, num_samples, self.latent_dim)
-        samples = self.decode(z, S_init)
+        z = (torch.rand(1, num_samples, self.latent_dim) * 4) - 2
+        samples = self.decode(z)
+        samples = samples.squeeze(axis=0)
+
         return samples
 
     def generate(self, x: Tensor, **kwargs) -> Tensor:
