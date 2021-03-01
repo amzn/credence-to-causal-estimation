@@ -24,9 +24,7 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
         X: Array,  # shape (T x B x N) (batch size, sequence length, dimensionality)
         latent_dim: int,  # size of the latent dimension
         kld_weight: float = 1,  # weight for KL loss in loss
-        lr: float = 0.005,  # learning rate
         weight_decay: float = 0,  # weight decay
-        hidden_dims: List = None,  # list of hidden dimensions for encoder
         **kwargs
     ) -> None:
         super(AR_VAE, self).__init__()
