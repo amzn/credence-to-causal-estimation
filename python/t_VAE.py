@@ -42,7 +42,7 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
         X: Array,  # shape (T x B x N) (batch size, sequence length, dimensionality)
         lag: int,  # Autoregressive lag
         latent_dim: int,  # size of the latent dimension
-        kld_weight: float = 1, # weight for KL loss in loss
+        kld_weight: float = 1,  # weight for KL loss in loss
         normalize_idx: int = 0,  # normalize_index
         lr: float = 0.005,  # learning rate
         weight_decay: float = 0,  # weight decay
@@ -190,8 +190,10 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
         input = args[1]
         mu = args[2]
         log_var = args[3]
-        
-        kld_weight = kwargs["M_N"]  # Account for the minibatch samples from the dataset, currently, M_N is always set to 1
+
+        kld_weight = kwargs[
+            "M_N"
+        ]  # Account for the minibatch samples from the dataset, currently, M_N is always set to 1
         kld_weight = kld_weight * self.kld_weight
 
         recons = torch.squeeze(recons)
@@ -203,7 +205,12 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
             )
         )
         loss = recons_loss + kld_weight * kld_loss
-        return {"loss": loss, "Reconstruction_Loss": recons_loss, "KLD_Loss": kld_loss, 'KLD_weight': kld_weight} 
+        return {
+            "loss": loss,
+            "Reconstruction_Loss": recons_loss,
+            "KLD_Loss": kld_loss,
+            "KLD_weight": kld_weight,
+        }
 
     def sample(self, T: int, num_samples: int,) -> Tensor:
         """
@@ -278,44 +285,21 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
         return self.sample_dataloader
 
     def marginal(self, D, sample=100):
-        T = D.shape[0]
-        X = D.reshape((T, 1, -1))
-        pi = self.encode(X)
-        mu, logvar = pi
-
-        B = X.shape[1]
-        peaks = self.make_peak(T, B)
-        trend = self.make_trend(T, B, 0.005)
-        seasonality_y = self.make_seasonality(T, B, 365)
-        seasonality_m = self.make_seasonality(T, B, 30)
-        w1 = torch.cat((peaks, trend, seasonality_y, seasonality_m), axis=2)
-        loglike = []
-        for t in range(self.lag, T):
-            Xhat = []
-            for i in range(0, sample):
-                z = torch.randn(B, self.latent_dim)
-                result = self.decoder_input(z)
-                w = self.decoder(result)
-                # concatenating w with addition trends (seasonality+peaks+linear)
-                w = torch.cat((w, w1[t, :, :]), axis=1)
-                # concatenating lag terms
-                w = torch.cat([w] + [X[i, :, :] for i in range(t - self.lag, t)], dim=1)
-                s = self.final_layer(w)
-                Xhat.append(s)
-            Xhat = torch.stack(Xhat)[:, 0, :]
-            mu_Xhat = Xhat.mean(axis=0)
-            cov_inv_Xhat = torch.tensor(
-                np.linalg.inv(np.cov(Xhat.T.detach().numpy()))
-            ).float()
-            loglike_t = -0.5 * torch.matmul(
-                (D[t, :] - mu_Xhat).T, torch.matmul(cov_inv_Xhat, (D[t, :] - mu_Xhat))
-            )
-            loglike.append(loglike_t)
-        return torch.sum(torch.tensor(loglike).float())
+        z = (torch.rand(1, sample, self.latent_dim) * 4) - 2
+        s = self.decode(z)
+        Xhat = s.squeeze(axis=0)
+        mu_Xhat = Xhat.mean(axis=0)
+        cov_inv_Xhat = torch.tensor(
+            np.linalg.inv(np.cov(Xhat.T.detach().numpy()))
+        ).float()
+        loglike = -0.5 * torch.matmul(
+            (D - mu_Xhat).T, torch.matmul(cov_inv_Xhat, (D - mu_Xhat))
+        )
+        return loglike
 
     def marginal_log_likelihood(self, X, samples=100):
-        B = X.shape[1]
+        B = X.shape[0]
         loglike = []
         for i in range(B):
-            loglike.append(self.marginal(X[:, i, :], sample=samples))
+            loglike.append(self.marginal(X[i, :], sample=samples))
         return loglike
