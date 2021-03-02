@@ -18,12 +18,31 @@ def init_weights(m):
         m.bias.data.fill_(0.0)
 
 
+class normalize(nn.Module):
+    def __init__(self, target_idx=0):
+        super().__init__()
+        self.target_idx = target_idx
+
+    def forward(self, input):
+        try:
+            shape = input.shape
+            output = torch.zeros(shape, requires_grad=True)
+            m = torch.mean(input[:, :, 0], axis=0)
+            s = torch.mean(input[:, :, 0], axis=0)
+            for i in range(shape[1]):
+                output[:, i, :] = (input[:, i, :] - m[i]) / s[i]
+            return output
+        except:
+            return input
+
+
 class AR_VAE(baseVAE.BaseVAE, LightningModule):
     def __init__(
         self,
         X: Array,  # shape (T x B x N) (batch size, sequence length, dimensionality)
         latent_dim: int,  # size of the latent dimension
         kld_weight: float = 1,  # weight for KL loss in loss
+        normalize_idx: int = 0,  # normalize_index
         lr: float = 0.005,  # learning rate
         weight_decay: float = 0,  # weight decay
         hidden_dims: List = None,  # list of hidden dimensions for encoder
@@ -47,6 +66,10 @@ class AR_VAE(baseVAE.BaseVAE, LightningModule):
         modules = []
         if hidden_dims is None:
             hidden_dims = [32, 16]
+
+        # Normalize
+        net = nn.Sequential(normalize(normalize_idx))
+        modules.append(net)
 
         # Build
         in_channels = self.in_channels
