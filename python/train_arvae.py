@@ -116,7 +116,7 @@ def intervene_raw(
 
 
 # Function to generate example samples
-def generate_example_sample(vae_model, targets, adjust, T, B, N, latent_values=None):
+def generate_example_sample(vae_model, targets, adjust, T, B, N, latent_values=None, donor_intervals=None, if_output_std_samples=False):
 
     latent_dim = vae_model.latent_dim
 
@@ -127,13 +127,12 @@ def generate_example_sample(vae_model, targets, adjust, T, B, N, latent_values=N
 
     s = vae_model.decode(nz).detach().numpy()
     s = s.squeeze(axis=0)
-    targets_var = rescale(s, targets, adjust, T, B, N)
+    targets_var = rescale(s, targets, adjust, T, B, N, donor_intervals=donor_intervals)
 
-    neg_adj = np.min(targets_var, axis=0)
-    neg_adj[neg_adj > 0] = 0
-    targets_var = targets_var - neg_adj
-
-    return targets_var
+    if if_output_std_samples:
+        return targets_var, s
+    else:
+        return targets_var
 
 
 # Function to plot data+samples
@@ -169,15 +168,16 @@ def plot_latent_space(vae_model, data):
     plt.show()
 
 
-def prepare_input(data, targets, adjust: float = 10, outlier_threshold: float = 5):
+def prepare_input(data, targets, adjust: float = 10, outlier_threshold: float = 5, donor_intervals=None):
 
-    data_norm0, std_t, std_d = normalized_data(data, targets)
+    data_norm0, std_t, std_d = normalized_data(data, targets, donor_intervals=donor_intervals)
 
     # remove outlier
-    if outlier_threshold <= 0:
-        raise ValueError("Outlier threshold must be positive.")
-    data_norm0[data_norm0 > outlier_threshold] = outlier_threshold
-    data_norm0[data_norm0 < -outlier_threshold] = -outlier_threshold
+    if outlier_threshold is not None:
+        if outlier_threshold <= 0:
+            raise ValueError("Outlier threshold must be positive.")
+        data_norm0[data_norm0 > outlier_threshold] = outlier_threshold
+        data_norm0[data_norm0 < -outlier_threshold] = -outlier_threshold
 
     # convert 3D to 2D
     data_norm = convert_to_2d(data_norm0)
@@ -187,8 +187,8 @@ def prepare_input(data, targets, adjust: float = 10, outlier_threshold: float = 
 
     processed_data_norm = np.append(
         np.append(
-            np.append(data_norm, np.log(std_t[:, None]) / adjust, axis=1),
-            np.log(std_d[:, None]) / adjust,
+            np.append(data_norm, np.log(std_t) / adjust, axis=1),
+            np.log(std_d) / adjust,
             axis=1,
         ),
         np.log(mean_targets) / adjust,
@@ -196,27 +196,76 @@ def prepare_input(data, targets, adjust: float = 10, outlier_threshold: float = 
     )
     return processed_data_norm
 
+def check_donor_intervals(donor_intervals, targets, N):
+    if donor_intervals is None:
+        pass
+    elif isinstance(donor_intervals, list):
+        std_d = []
+        for interval in donor_intervals:
+            interval_start, interval_end = interval
 
-def normalized_data(data: np.ndarray, targets):
+            if interval_start < targets:
+                raise ValueError("donor_intervals cannot overlap with targets.")
+            if interval_end > N:
+                raise ValueError("donor_intervals cannot exceed total numbers of donors plus targets.")
+            if interval_start > interval_end:
+                raise ValueError("feature_fitting_window intervals are invalid")
+    else:
+        raise ValueError('Values for donor_intervals must be None or a list.')
+
+
+def normalized_data(data: np.ndarray, targets, donor_intervals=None):
     N = data.shape[2]  # total number of donors + targets
+
+    check_donor_intervals(donor_intervals, targets, N)
 
     # Separetly compute standard deviation for largest target and largest donor
     std_t = np.std(data[:, :, targets - 1], axis=0)
-    std_d = np.std(data[:, :, N - 1], axis=0)
+
+    if donor_intervals is None:
+        std_d = np.std(data[:, :, N - 1], axis=0)
+    else:
+        std_d = []
+        for interval in donor_intervals:
+            interval_start, interval_end = interval
+            std_d_i = np.std(data[:, :, interval_end-1], axis=0)
+            std_d.append(std_d_i)
 
     data_norm0t = (
         data[:, :, :targets] - np.mean(data[:, :, :targets], axis=0)
     ) / std_t[None, :, None]
-    data_norm0d = (
+
+    if donor_intervals is None:
+        data_norm0d = (
         data[:, :, targets:] - np.mean(data[:, :, targets:], axis=0)
-    ) / std_d[None, :, None]
-    data_norm0 = np.append(data_norm0t, data_norm0d, axis=2)
+        ) / std_d[None, :, None]
+
+        data_norm0 = np.append(data_norm0t, data_norm0d, axis=2)
+        
+        # Convert 1-D arrays of std_d into 2-D array.
+        std_d = std_d[:, None]
+        
+    elif isinstance(donor_intervals, list):
+        data_norm0 = data_norm0t
+        for interval, std_d_i in zip(donor_intervals, std_d):
+            interval_start, interval_end = interval
+            data_norm0d_i = (
+            data[:, :, interval_start:interval_end] - np.mean(data[:, :, interval_start:interval_end], axis=0)
+            ) / std_d_i[None, :, None]
+
+            data_norm0 = np.append(data_norm0, data_norm0d_i, axis=2)
+        # Stack 1-D arrays of std_d as columns into a 2-D array.
+        std_d = np.column_stack(std_d)
 
     print(f"Shape: {data_norm0.shape}")
     print(f"\nMean of raw data: {np.mean(data):.3f}")
     print(f"Std. dev of raw data: {np.std(data):.3f}")
     print(f"\nMean of normalized data: {np.mean(data_norm0):.3f}")
     print(f"Std. dev of normalized data: {np.std(data_norm0):.3f}")
+
+    # Convert 1-D arrays of std_d into 2-D array.
+    std_t = std_t[:, None]
+
     return data_norm0, std_t, std_d
 
 
@@ -240,19 +289,42 @@ def convert_to_3d(data_input, T, B, N):
     return data_input_3d
 
 
-def rescale(data, targets, adjust, T, B, N):
+def rescale(data, targets, adjust, T, B, N, donor_intervals=None):
+
+    check_donor_intervals(donor_intervals, targets, N)
+
     ## rescale function currently only works for 1 level hierarchy
     data_3d = convert_to_3d(data, T, B, N)
 
-    normalizers = np.exp(data[:, -(N + targets) :] * adjust)
-    data_rescaled = (
-        np.append(
-            data_3d[:, :, :targets] * normalizers[:, 0, None],
-            data_3d[:, :, targets:] * normalizers[:, 1, None],
-            axis=2,
+    if donor_intervals is None:
+        n_std = 1
+        normalizers = np.exp(data[:, -(N + 1 + n_std) :] * adjust)
+        data_rescaled = (
+            np.append(
+                data_3d[:, :, :targets] * normalizers[:, 0, None],
+                data_3d[:, :, targets:] * normalizers[:, 1, None],
+                axis=2,
+            )
+            + normalizers[:, (1 + n_std):]
         )
-        + normalizers[:, targets:]
-    )
+    else:
+        n_std = len(donor_intervals)
+        normalizers = np.exp(data[:, -(N + 1 + n_std) :] * adjust)
+
+        data_rescaled_t = data_3d[:, :, :targets] * normalizers[:, 0, None]
+
+        data_rescaled = data_rescaled_t
+        for interval, i in zip(donor_intervals, range(n_std)):
+            interval_start, interval_end = interval
+            data_rescaled_donor_i = data_3d[:, :, interval_start:interval_end] * normalizers[:, 1 + i, None]
+            data_rescaled = np.append(data_rescaled,  data_rescaled_donor_i, axis=2)
+        
+        data_rescaled = data_rescaled + normalizers[:, (1 + n_std):]
+    
+    neg_adj = np.min(data_rescaled, axis=0)
+    neg_adj[neg_adj > 0] = 0
+    data_rescaled = data_rescaled - neg_adj
+
     return data_rescaled
 
 
