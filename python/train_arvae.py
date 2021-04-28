@@ -136,12 +136,12 @@ def generate_example_sample(vae_model, targets, adjust, T, B, N, latent_values=N
 
 
 # Function to plot data+samples
-def plot_data(vae_model, targets, adjust, T, N, B=6, latent_values=None):
+def plot_data(vae_model, B=6, **kwargs):
     # Need to add functionality for ploting post_intervention_vae_model
     sns.set(font_scale=1.25)
 
     targets_var = generate_example_sample(
-        vae_model, targets, adjust, T, B, N, latent_values=latent_values
+        vae_model, B=B, **kwargs
     )
 
     fig, ax = plt.subplots(nrows=3, ncols=2, figsize=(35, 20))
