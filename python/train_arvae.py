@@ -143,7 +143,7 @@ def plot_data(vae_model, B=6, **kwargs):
     targets_var = generate_example_sample(
         vae_model, B=B, **kwargs
     )
-
+    
     fig, ax = plt.subplots(nrows=3, ncols=2, figsize=(35, 20))
 
     ax[0, 0].plot(np.arange(np.shape(targets_var)[0]), targets_var[:, 0, :], alpha=0.5)
@@ -152,8 +152,9 @@ def plot_data(vae_model, B=6, **kwargs):
     ax[1, 1].plot(np.arange(np.shape(targets_var)[0]), targets_var[:, 3, :], alpha=0.5)
     ax[2, 0].plot(np.arange(np.shape(targets_var)[0]), targets_var[:, 4, :], alpha=0.5)
     ax[2, 1].plot(np.arange(np.shape(targets_var)[0]), targets_var[:, 5, :], alpha=0.5)
-    plt.show()
     plt.close()
+    
+    return fig
 
 
 def plot_latent_space(vae_model, data):
@@ -165,7 +166,8 @@ def plot_latent_space(vae_model, data):
     for i in range(latent_dim):
         ax[i, 0].hist(mu[0, :, i].detach().numpy())
         ax[i, 1].hist(np.exp(log_var[0, :, i].detach().numpy()))
-    plt.show()
+    
+    return fig
 
 
 def prepare_input(data, targets, adjust: float = 10, outlier_threshold: float = 5, donor_intervals=None):
