@@ -10,7 +10,7 @@
 
 ## Framework
 
-![Credence Framework](images/credenceframework.png)
+![Credence Framework](credenceframework.png)
 
 Credence uses state-of-the-art deep generative models such as variational auto-encoders (VAEs) to approximate the universe of complex datasets. These generative models are trained and validated on a collection of observed data sets. Credence uses these trained deep generative models to generate data that has analogous complexity to the observed data. Credence’s procedure enables users to have perfect knowledge about  ground truth treatment effects of the intervention in the generated data. This allows the users to evaluate their method in a principled fashion without compromising on the complexity or the realness of the data they are evaluating the method on.
 
@@ -70,7 +70,7 @@ df['T'] = T
 sns.scatterplot(y='Y0',x='Y1',hue='T',data=df)
 ```
 
-![png](images/output_13_1.png)
+![png](output_13_1.png)
 
 ### Initializing and object of class conVAE to learn conditional distribution of Y1,Y0 | X0,..X4. 
 
@@ -123,7 +123,7 @@ ax[1].scatter(y=df['Y0'],x=df['Y1'])
 ax[1].set_title('Observed')
 ```
 
-![png](images/output_20_1.png)
+![png](output_20_1.png)
 
 
 ## Example 2 (Credence class)
